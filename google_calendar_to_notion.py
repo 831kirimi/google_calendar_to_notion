@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import datetime
+import datetime, re
 import googleapiclient.discovery
 import google.auth
 import requests
 import os
 from dotenv import load_dotenv
 import dataclasses
-# import json
 
 @dataclasses.dataclass
 class Event:
@@ -20,6 +19,11 @@ class Event:
     description: str
     page_id:str = ''
 
+def convert_datetime_google_to_notion(ggl_datetime:str):
+  split = ggl_datetime.split('+')
+  convert = split[0] + '.000+' + split[1]
+  return convert
+  
 # googleカレンダーから情報を取得
 def get_google_calendar(api_key_path:str,calendar_id:str,start:str,max_result:int) -> list: 
   SCOPES = ['https://www.googleapis.com/auth/calendar']
@@ -46,10 +50,18 @@ def get_google_calendar(api_key_path:str,calendar_id:str,start:str,max_result:in
             description = event['description']
       else:
             description = ''
+      start = event['start'].get('dateTime', event['start'].get('date'))
+      end = event['end'].get('dateTime', event['end'].get('date'))
+      if re.match(r'^\d{4}-\d{2}-\d{2}$', start): # all day event
+        end = None
+      else:
+        start = convert_datetime_google_to_notion(start)
+        end = convert_datetime_google_to_notion(end)
+
       formatted_events.append(Event(calendar_id=event['id'],
                                         title=event['summary'],
-                                        start=event['start'].get('dateTime', event['start'].get('date')), # start time or day
-                                        end=event['end'].get('dateTime', event['end'].get('date')), # end time or day
+                                        start=start, # start time or day
+                                        end=end, # end time or day
                                         location=location,
                                         description=description))
 
@@ -162,8 +174,6 @@ def query_notion_database(notion_key:str,database_id:str,calender_id:str):
     return 0
   elif len(results) == 1:
     result = results[0]
-    # p2j_data = json.dumps(r, indent=4)
-    # print(p2j_data)
     event = Event(calendar_id=calender_id,
     title=result['properties']['Title']['title'][0]['text']['content'],
     start=result['properties']['Date']['date']['start'],
@@ -255,15 +265,15 @@ def main():
   events = get_google_calendar(os.environ['GOOGLE_API_KEY_PATH'],os.environ['CALENDAR_ID'],start,max_result)
 
   for event in events:
-    update_event = query_notion_database(os.environ['NOTION_ACCESS_KEY'],os.environ['DATABASE_ID'],event.calendar_id)
-    if update_event == 0: # create
+    notion_event = query_notion_database(os.environ['NOTION_ACCESS_KEY'],os.environ['DATABASE_ID'],event.calendar_id)
+    if notion_event == 0: # create
       create_notion_page(os.environ['NOTION_ACCESS_KEY'],os.environ['DATABASE_ID'],event)
-    elif update_event == 1:
+    elif notion_event == 1:
       continue
     else: # update
-      event.page_id = update_event.page_id
-      if event != update_event:
-        update_page(os.environ['NOTION_ACCESS_KEY'],update_event.page_id,update_event)      
+      event.page_id = notion_event.page_id
+      if event != notion_event:
+        update_page(os.environ['NOTION_ACCESS_KEY'],event.page_id,event)      
 
 if(__name__ == '__main__'):
   main()
