@@ -7,9 +7,19 @@ import google.auth
 import requests
 import os
 from dotenv import load_dotenv
+import dataclasses
+
+@dataclasses.dataclass
+class Event:
+    id: str
+    title: str
+    start: str
+    end: str
+    location: str
+    description: str
 
 # googleカレンダーから情報を取得
-def get_google_calendar(api_key_path,calendar_id,start,max_result):
+def get_google_calendar(api_key_path:str,calendar_id:str,start:str,max_result:int) -> list: 
   SCOPES = ['https://www.googleapis.com/auth/calendar']
   gapi_creds = google.auth.load_credentials_from_file(api_key_path, SCOPES)[0]
   service = googleapiclient.discovery.build('calendar', 'v3', credentials=gapi_creds)
@@ -34,17 +44,17 @@ def get_google_calendar(api_key_path,calendar_id,start,max_result):
             description = event['description']
       else:
             description = ''
-      formatted_events.append([event['id'],
-            event['summary'],
-            event['start'].get('dateTime', event['start'].get('date')), # start time or day
-            event['end'].get('dateTime', event['end'].get('date')), # end time or day
-            location,
-            description])
+      formatted_events.append(Event(id=event['id'],
+                                        title=event['summary'],
+                                        start=event['start'].get('dateTime', event['start'].get('date')), # start time or day
+                                        end=event['end'].get('dateTime', event['end'].get('date')), # end time or day
+                                        location=location,
+                                        description=description))
 
   return formatted_events
           
 # Notionの指定したデータベースにページを作成する
-def create_notion_page(notion_key,database_id,calendar_id,title,start,end,location,description):
+def create_notion_page(notion_key:str,database_id:str,calender:Event) -> None:
   url = "https://api.notion.com/v1/pages"
 
   payload = {
@@ -59,7 +69,7 @@ def create_notion_page(notion_key,database_id,calendar_id,title,start,end,locati
           {
             "type": "text",
             "text": {
-              "content": calendar_id
+              "content": calender.id
             }
           }
         ]
@@ -69,7 +79,7 @@ def create_notion_page(notion_key,database_id,calendar_id,title,start,end,locati
           {
             "type": "text",
             "text": {
-              "content": title
+              "content": calender.title
             }
           }
         ]
@@ -77,8 +87,8 @@ def create_notion_page(notion_key,database_id,calendar_id,title,start,end,locati
       "Date": {
         "type": "date",
         "date": {
-          "start": start,
-          "end": end
+          "start": calender.start,
+          "end": calender.end
         }
       },
       "Location": {
@@ -87,7 +97,7 @@ def create_notion_page(notion_key,database_id,calendar_id,title,start,end,locati
           {
             "type": "text",
             "text": {
-              "content": location
+              "content": calender.location
             }
           }
         ]
@@ -98,7 +108,7 @@ def create_notion_page(notion_key,database_id,calendar_id,title,start,end,locati
           {
             "type": "text",
             "text": {
-              "content": description
+              "content": calender.description
             }
           }
         ]
@@ -121,7 +131,7 @@ def create_notion_page(notion_key,database_id,calendar_id,title,start,end,locati
     print('success!')
   else:
     print('### error ###')
-    print('status_code: {0}, calendar_id: {1}, title: {2}'.format(response.status_code, calendar_id, title))
+    print('status_code: {0}, calendar_id: {1}, title: {2}'.format(response.status_code, calender.id, calender.title))
   
 
 def main():
@@ -130,10 +140,12 @@ def main():
   # start = datetime.datetime.utcnow().isoformat() + 'Z' # now
   start = datetime.datetime(2010, 1, 1, 0, 0, 0, 0).isoformat() + 'Z'
 
-  events = get_google_calendar(os.environ['GOOGLE_API_KEY_PATH'],os.environ['CALENDAR_ID'],start,100000)
+  max_result = 100000
+
+  events = get_google_calendar(os.environ['GOOGLE_API_KEY_PATH'],os.environ['CALENDAR_ID'],start,max_result)
 
   for event in events:
-    create_notion_page(os.environ['NOTION_ACCESS_KEY'],os.environ['DATABASE_ID'],event[0],event[1],event[2],event[3],event[4],event[5])
-  
+    create_notion_page(os.environ['NOTION_ACCESS_KEY'],os.environ['DATABASE_ID'],event)
+
 if(__name__ == '__main__'):
   main()
