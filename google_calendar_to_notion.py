@@ -33,7 +33,7 @@ def get_google_calendar(api_key_path:str,calendar_id:str,start:str,max_result:in
   print('get google calendar events...')
 
   event_list = service.events().list(
-      calendarId=calendar_id, timeMin=start,
+      calendarId=calendar_id,updatedMin=start,
       maxResults=max_result, singleEvents=True,
       orderBy='startTime').execute()
 
@@ -252,17 +252,21 @@ def update_page(notion_key:str,page_id:str,event:Event):
 
   response = requests.patch(url, json=payload, headers=headers)
 
-  print(response.text) 
+  if response.status_code == requests.codes.ok:
+    print('success!')
+  else:
+    print('### error ###')
+    print('status_code: {0}, calendar_id: {1}, title: {2}'.format(response.status_code, event.calendar_id, event.title))
 
 def main():
   load_dotenv()
-
-  # start = datetime.datetime.utcnow().isoformat() + 'Z' # now
-  start = datetime.datetime(2010, 1, 1, 0, 0, 0, 0).isoformat() + 'Z'
+  now = datetime.datetime.utcnow()
+  start = now - datetime.timedelta(weeks=1)
+  start_format = start.isoformat() + 'Z'
 
   max_result = 100000
 
-  events = get_google_calendar(os.environ['GOOGLE_API_KEY_PATH'],os.environ['CALENDAR_ID'],start,max_result)
+  events = get_google_calendar(os.environ['GOOGLE_API_KEY_PATH'],os.environ['CALENDAR_ID'],start_format,max_result)
 
   for event in events:
     notion_event = query_notion_database(os.environ['NOTION_ACCESS_KEY'],os.environ['DATABASE_ID'],event.calendar_id)
@@ -273,7 +277,9 @@ def main():
     else: # update
       event.page_id = notion_event.page_id
       if event != notion_event:
-        update_page(os.environ['NOTION_ACCESS_KEY'],event.page_id,event)      
+        update_page(os.environ['NOTION_ACCESS_KEY'],event.page_id,event)
+      else:
+        print('no update')
 
 if(__name__ == '__main__'):
   main()
