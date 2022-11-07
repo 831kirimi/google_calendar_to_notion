@@ -285,7 +285,8 @@ def main():
 
   # sync token
   if os.path.exists('nextSyncToken'):
-    sync_token = open('nextSyncToknen', 'r')
+    with open('nextSyncToken') as f:
+      sync_token = f.read()
   else:
     sync_token = ''
   
