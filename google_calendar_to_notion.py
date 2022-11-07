@@ -25,19 +25,41 @@ def convert_datetime_google_to_notion(ggl_datetime:str):
   return convert
   
 # googleカレンダーから情報を取得
-def get_google_calendar(api_key_path:str,calendar_id:str,start:str,max_result:int) -> list: 
+def get_google_calendar(api_key_path:str,calendar_id:str,sync_token:str) -> list: 
   SCOPES = ['https://www.googleapis.com/auth/calendar']
   gapi_creds = google.auth.load_credentials_from_file(api_key_path, SCOPES)[0]
   service = googleapiclient.discovery.build('calendar', 'v3', credentials=gapi_creds)
 
   print('get google calendar events...')
 
-  event_list = service.events().list(
-      calendarId=calendar_id,updatedMin=start,
-      maxResults=max_result, singleEvents=True,
-      orderBy='startTime').execute()
+  if sync_token != '' or sync_token != None: # sync tokenあり
+    event_list = service.events().list(
+        calendarId=calendar_id,
+        singleEvents=True,
+        syncToken=sync_token).execute()
+  else: # sync tokenなし
+    event_list = service.events().list(
+        calendarId=calendar_id,
+        singleEvents=True).execute()
 
   events = event_list.get('items', [])
+
+  next_sync_token = event_list.get('nextSyncToken')
+  next_page_token = event_list.get('nextPageToken')
+
+  while next_page_token != None:
+    event_list = service.events().list(
+      pageToken=next_page_token,
+      calendarId=calendar_id,
+      singleEvents=True).execute()
+    events.append(event_list.get('items', []))
+    next_sync_token = event_list.get('nextSyncToken')
+    next_page_token = event_list.get('nextPageToken')
+
+  f = open('nextSyncToken', 'w')
+  f.write(next_sync_token)
+  f.close()
+
   formatted_events = []
   for event in events:
       if 'summary' not in event:
@@ -260,13 +282,14 @@ def update_page(notion_key:str,page_id:str,event:Event):
 
 def main():
   load_dotenv()
-  now = datetime.datetime.utcnow()
-  start = now - datetime.timedelta(weeks=1)
-  start_format = start.isoformat() + 'Z'
 
-  max_result = 100000
-
-  events = get_google_calendar(os.environ['GOOGLE_API_KEY_PATH'],os.environ['CALENDAR_ID'],start_format,max_result)
+  # sync token
+  if os.path.exists('nextSyncToken'):
+    sync_token = open('nextSyncToknen', 'r')
+  else:
+    sync_token = ''
+  
+  events = get_google_calendar(os.environ['GOOGLE_API_KEY_PATH'],os.environ['CALENDAR_ID'],sync_token)
 
   for event in events:
     notion_event = query_notion_database(os.environ['NOTION_ACCESS_KEY'],os.environ['DATABASE_ID'],event.calendar_id)
