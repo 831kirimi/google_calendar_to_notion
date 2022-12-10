@@ -43,6 +43,7 @@ def get_google_calendar(api_key_path:str,calendar_id:str,sync_token:str) -> list
         singleEvents=True).execute()
 
   events = event_list.get('items', [])
+  print(events)
 
   next_sync_token = event_list.get('nextSyncToken')
   next_page_token = event_list.get('nextPageToken')
@@ -75,15 +76,25 @@ def get_google_calendar(api_key_path:str,calendar_id:str,sync_token:str) -> list
       start = event['start'].get('dateTime', event['start'].get('date'))
       end = event['end'].get('dateTime', event['end'].get('date'))
       if re.match(r'^\d{4}-\d{2}-\d{2}$', start): # all day event
-        end = None
+        start_d = datetime.datetime.strptime(start, "%Y-%m-%d")
+        end_d = datetime.datetime.strptime(end, "%Y-%m-%d")
+        td = end_d - start_d
+        start_n = start
+        if td.days == 1:
+          end_n = None
+        else:
+          one_day = datetime.timedelta(days=1)
+          end_d = end_d - one_day
+          end_n = end_d.strftime('%Y-%m-%d')
+
       else:
-        start = convert_datetime_google_to_notion(start)
-        end = convert_datetime_google_to_notion(end)
+        start_n = convert_datetime_google_to_notion(start)
+        end_n = convert_datetime_google_to_notion(end)
 
       formatted_events.append(Event(calendar_id=event['id'],
                                         title=event['summary'],
-                                        start=start, # start time or day
-                                        end=end, # end time or day
+                                        start=start_n, # start time or day
+                                        end=end_n, # end time or day
                                         location=location,
                                         description=description))
 
